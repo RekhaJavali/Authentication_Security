@@ -8,15 +8,34 @@ const ejs = require("ejs");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const encrypt =  require("mongoose-encryption"); //to encrypt password in db
-const md5 = require("md5");
-const bcrypt = require("bcrypt");
-const saltRounds = 10;
+// const md5 = require("md5"); //level3
+// const bcrypt = require("bcrypt"); //level4
+// const saltRounds = 10;
+
+//order of the cose is imp on passport session code
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
 
 app.use(bodyParser.urlencoded({extended:true}));
 // console.log(process.env.SECRET);
 
 app.use(express.static("public"));
 app.set("view engine", 'ejs');
+
+
+app.use(session({
+    secret: 'My name is rekha',
+    resave: false,
+    saveUninitialized: true,
+    // cookie: { secure: true }
+  }));
+
+  app.use(passport.initialize());
+  app.use(passport.session());
+
+
+
 mongoose.set('strictQuery', true);
 mongoose.connect("mongodb+srv://Rekha:Rekha13@cluster0.uihvcdf.mongodb.net/userDB", function(err){
     if(err) console.log("can't connect to db", err);
@@ -28,11 +47,17 @@ const userSchema =  new mongoose.Schema({
     password: String
 });
 
-
+userSchema.plugin(passportLocalMongoose); //passportjs
 // const secret = "MynameisRekhaGKfromDavanagere"; //in env
 // userSchema.plugin(encrypt, { secret:process.env.SECRET, encryptedFields: ["password"] }); // removed for hasing md5level3
 
 const User = mongoose.model("User", userSchema);
+
+passport.use(User.createStrategy());
+
+// use static serialize and deserialize of model for passport session support
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 
 
@@ -48,8 +73,54 @@ app.get("/register", function(req, res){
     res.render("register");
 });
 
+app.get("/secrets", function(req, res){
+    if(req.isAuthenticated()){
+        res.render("secrets");
+    }else{
+        res.redirect("/login");
+    }
+});
 
+app.get("/logout", function(req, res){
+    req.logout(function(err) {
+        if (err) { return next(err);}
+        res.redirect("/");
+        });
+});
 
+app.post("/register", function(req,res){
+    User.register({username:req.body.username}, req.body.password, function(err, user) {
+        //here db stres username overwrites name email
+        if(err){
+            console.log(err);
+            res.redirect("/register");
+        }else{
+            passport.authenticate("local")(req, res, function(){
+                res.redirect("/secrets");
+            });
+        }
+    });
+});
+
+app.post("/login", function(req,res){
+    const user = new User({
+        username:req.body.username, //this is username instead of email
+        password:req.body.password
+    });
+    //passport method login
+    req.login(user, function(err){
+        if(err){
+             console.log(err);
+        }
+        else{
+            passport.authenticate("local")(req, res, function(){
+                res.redirect("/secrets");
+            });
+        }
+    });
+});
+/*
+//commented post - login and register for passport.js implementation
 app.post("/register", function(req, res){
 
     bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
@@ -67,9 +138,7 @@ app.post("/register", function(req, res){
         console.log(newUser.password);
     });
 
-
-    
-    
+  
 });
 
 app.post("/login", function(req, res){
@@ -95,7 +164,7 @@ app.post("/login", function(req, res){
             }
         });
     });
-
+*/
 
 app.listen("3000", function(){
     console.log("server on 3000 port");
